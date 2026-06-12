@@ -8,12 +8,7 @@ SwiftUI 版私教排课 MVP。
 2. 选择 `WarmCoach` scheme。
 3. 选择 iPhone 模拟器或真机运行。
 
-当前工程最低部署版本为 **iOS 16.0**。iOS 13.6 真机无法安装运行，会出现类似下面的提示：
-
-```text
-YF's iPhone's iOS 13.6 doesn't match WarmCoach.app's iOS 16.0 deployment target.
-Upgrade YF's iPhone's iOS version or lower WarmCoach.app's deployment target.
-```
+当前工程最低部署版本为 **iOS 16.0**。
 
 如果需要真机运行，请使用 iOS 16.0 或更高版本的 iPhone，并在 Signing & Capabilities 中选择你的 Apple Developer Team，把 Bundle Identifier 改成自己的唯一 ID。
 
