@@ -138,21 +138,38 @@ struct CoachLeaveRecord: Identifiable, Codable, Equatable {
     var affectedSessionIDs: [UUID]
 }
 
+struct MemberLeaveRecord: Identifiable, Codable, Equatable {
+    var id: UUID
+    var memberID: UUID
+    var startDate: Date
+    var endDate: Date
+    var note: String
+    var affectedSessionIDs: [UUID]
+}
+
 struct CoachData: Codable {
     var members: [Member]
     var sessions: [CourseSession]
     var leaveRecords: [CoachLeaveRecord]
+    var memberLeaveRecords: [MemberLeaveRecord]
 
-    init(members: [Member], sessions: [CourseSession], leaveRecords: [CoachLeaveRecord] = []) {
+    init(
+        members: [Member],
+        sessions: [CourseSession],
+        leaveRecords: [CoachLeaveRecord] = [],
+        memberLeaveRecords: [MemberLeaveRecord] = []
+    ) {
         self.members = members
         self.sessions = sessions
         self.leaveRecords = leaveRecords
+        self.memberLeaveRecords = memberLeaveRecords
     }
 
     private enum CodingKeys: String, CodingKey {
         case members
         case sessions
         case leaveRecords
+        case memberLeaveRecords
     }
 
     init(from decoder: Decoder) throws {
@@ -160,6 +177,7 @@ struct CoachData: Codable {
         members = try container.decode([Member].self, forKey: .members)
         sessions = try container.decode([CourseSession].self, forKey: .sessions)
         leaveRecords = try container.decodeIfPresent([CoachLeaveRecord].self, forKey: .leaveRecords) ?? []
+        memberLeaveRecords = try container.decodeIfPresent([MemberLeaveRecord].self, forKey: .memberLeaveRecords) ?? []
     }
 }
 

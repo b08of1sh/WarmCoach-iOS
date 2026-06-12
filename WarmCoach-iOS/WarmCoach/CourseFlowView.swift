@@ -48,6 +48,7 @@ struct CourseFlowView: View {
     @State private var repeatSpan: RepeatSpan = .currentWeek
     @State private var repeatWeekCount = 4
     @State private var selectedWeekdays: Set<Int> = []
+    @State private var showsHourLimitAlert = false
 
     init(sheet: CourseSheet) {
         existingSession = sheet.session
@@ -123,6 +124,19 @@ struct CourseFlowView: View {
         startMinutes < endMinutes && !candidateSessions.isEmpty && conflicts.isEmpty
     }
 
+    private var hasEnoughMemberHoursForCandidates: Bool {
+        guard existingSession == nil else { return true }
+        guard let selectedMember else { return false }
+        return candidateSessions.count <= selectedMember.remainingHours
+    }
+
+    private var hourLimitMessage: String {
+        guard let selectedMember else {
+            return "请先选择会员后再继续。"
+        }
+        return "\(selectedMember.name) 当前剩余 \(selectedMember.remainingHours) 课时，本次将创建 \(candidateSessions.count) 节课程，已超出剩余课时。请减少重复日期或调整生成周数后再继续。"
+    }
+
     var body: some View {
         if existingSession == nil {
             createFlowBody
@@ -166,7 +180,7 @@ struct CourseFlowView: View {
 
                         if step < 3 {
                             Button("下一步") {
-                                step += 1
+                                advanceStep()
                             }
                             .buttonStyle(PlainButtonStyle())
                             .padding(.horizontal, 16)
@@ -211,6 +225,11 @@ struct CourseFlowView: View {
                     }
                     syncSelectedWeekday(with: date)
                 }
+            }
+            .alert("课时不足", isPresented: $showsHourLimitAlert) {
+                Button("重新选择", role: .cancel) {}
+            } message: {
+                Text(hourLimitMessage)
             }
         }
     }
@@ -605,9 +624,25 @@ struct CourseFlowView: View {
         .sorted()
     }
 
+    private func advanceStep() {
+        guard step == 2 else {
+            step += 1
+            return
+        }
+        guard hasEnoughMemberHoursForCandidates else {
+            showsHourLimitAlert = true
+            return
+        }
+        step += 1
+    }
+
     private func save() {
         let sessionsToSave = candidateSessions
         guard !sessionsToSave.isEmpty else { return }
+        guard hasEnoughMemberHoursForCandidates else {
+            showsHourLimitAlert = true
+            return
+        }
         sessionsToSave.forEach { store.upsertSession($0) }
         presentationMode.wrappedValue.dismiss()
     }

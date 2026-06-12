@@ -471,18 +471,26 @@ struct LaunchLoadingView: View {
     }
 }
 
+private func defaultLeaveStartDate() -> Date {
+    Calendar.current.startOfDay(for: Date())
+}
+
+private func defaultLeaveEndDate(after startDate: Date) -> Date {
+    Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate
+}
+
 struct CoachLeaveRequestView: View {
     @Environment(\.presentationMode) private var presentationMode
     @EnvironmentObject private var store: CoachStore
-    @State private var startDate = Date()
-    @State private var endDate = Calendar.current.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
+    @State private var startDate = defaultLeaveStartDate()
+    @State private var endDate = defaultLeaveEndDate(after: defaultLeaveStartDate())
     @State private var note = ""
 
     private var affectedSessions: [CourseSession] {
         let normalizedStart = min(startDate, endDate)
         let normalizedEnd = max(startDate, endDate)
         return store.sortedSessions.filter {
-            $0.status.isVisibleInSchedule &&
+            $0.status == .upcoming &&
             $0.startsAt < normalizedEnd &&
             $0.endsAt > normalizedStart
         }
@@ -501,7 +509,10 @@ struct CoachLeaveRequestView: View {
                         Panel {
                             VStack(alignment: .leading, spacing: 12) {
                                 SectionTitle(title: "我要请假", systemImage: "moon.zzz.fill")
-                                DatePicker("开始时间", selection: $startDate)
+                                DatePicker("开始时间", selection: Binding(
+                                    get: { startDate },
+                                    set: { updateStartDate($0) }
+                                ))
                                 DatePicker("结束时间", selection: $endDate)
                                 if !isValidRange {
                                     WarningLine(text: "结束时间需要晚于开始时间。")
@@ -573,22 +584,35 @@ struct CoachLeaveRequestView: View {
             )
         }
     }
+
+    private func updateStartDate(_ newStartDate: Date) {
+        startDate = newStartDate
+        endDate = defaultLeaveEndDate(after: newStartDate)
+    }
 }
 
-struct CoachLeaveHistoryView: View {
+struct LeaveHistoryView: View {
     @Environment(\.presentationMode) private var presentationMode
-    let records: [CoachLeaveRecord]
+    let coachRecords: [CoachLeaveRecord]
+    let memberRecords: [MemberLeaveRecord]
+    let memberName: (UUID) -> String
+
+    @State private var showsMemberHistory = false
 
     var body: some View {
         NavigationView {
             ZStack {
                 WarmBackground()
                 ScrollView {
-                    VStack(spacing: 12) {
-                        if records.isEmpty {
-                            EmptyBlock(systemImage: "moon.zzz", title: "暂无休假记录", text: "完成请假后，起止时间和备注会显示在这里。")
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionTitleButton(title: "教练休假", systemImage: "moon.zzz.fill", buttonTitle: "会员记录") {
+                            showsMemberHistory = true
+                        }
+
+                        if coachRecords.isEmpty {
+                            EmptyBlock(systemImage: "moon.zzz", title: "暂无教练请假", text: "完成我要请假后，起止时间和备注会显示在这里。")
                         } else {
-                            ForEach(records) { record in
+                            ForEach(coachRecords) { record in
                                 CoachLeaveHistoryRow(record: record)
                             }
                         }
@@ -596,11 +620,211 @@ struct CoachLeaveHistoryView: View {
                     .padding(18)
                 }
             }
+            .background(
+                NavigationLink(
+                    destination: MemberLeaveHistoryView(records: memberRecords, memberName: memberName),
+                    isActive: $showsMemberHistory
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+            )
             .navigationBarTitle(Text("休假记录"), displayMode: .inline)
             .navigationBarItems(trailing: Button("完成") {
                 presentationMode.wrappedValue.dismiss()
             })
         }
+    }
+}
+
+struct MemberLeaveRequestView: View {
+    @Environment(\.presentationMode) private var presentationMode
+    @EnvironmentObject private var store: CoachStore
+    @State private var query = ""
+    @State private var selectedMemberID: UUID?
+    @State private var startDate = defaultLeaveStartDate()
+    @State private var endDate = defaultLeaveEndDate(after: defaultLeaveStartDate())
+    @State private var note = ""
+
+    private var filteredMembers: [Member] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return store.members }
+        return store.members.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmedQuery) ||
+            $0.phone.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+    }
+
+    private var selectedMember: Member? {
+        guard let selectedMemberID else { return nil }
+        return store.member(for: selectedMemberID)
+    }
+
+    private var memberSessions: [CourseSession] {
+        guard let selectedMemberID else { return [] }
+        return store.sortedSessions.filter {
+            $0.memberID == selectedMemberID &&
+            $0.status == .upcoming
+        }
+    }
+
+    private var affectedSessions: [CourseSession] {
+        let normalizedStart = min(startDate, endDate)
+        let normalizedEnd = max(startDate, endDate)
+        return memberSessions.filter {
+            $0.status.isVisibleInSchedule &&
+            $0.startsAt < normalizedEnd &&
+            $0.endsAt > normalizedStart
+        }
+    }
+
+    private var isValidRange: Bool {
+        startDate < endDate
+    }
+
+    private var canSubmit: Bool {
+        selectedMember != nil && isValidRange
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                WarmBackground()
+                ScrollView {
+                    VStack(spacing: 16) {
+                        Panel {
+                            VStack(alignment: .leading, spacing: 12) {
+                                SectionTitle(title: "给会员假", systemImage: "person.badge.clock")
+                                SearchField(text: $query, placeholder: "搜索会员")
+                                if filteredMembers.isEmpty {
+                                    EmptyBlock(systemImage: "person.crop.circle.badge.questionmark", title: "没有找到会员", text: "换个姓名或手机号再试试。")
+                                } else {
+                                    VStack(spacing: 10) {
+                                        ForEach(filteredMembers) { member in
+                                            MemberSelectRow(
+                                                member: member,
+                                                isSelected: selectedMemberID == member.id,
+                                                onSelect: { selectedMemberID = member.id }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Panel {
+                            VStack(alignment: .leading, spacing: 12) {
+                                SectionTitle(title: "给假时间范围", systemImage: "calendar.badge.clock")
+                                DatePicker("开始时间", selection: Binding(
+                                    get: { startDate },
+                                    set: { updateStartDate($0) }
+                                ))
+                                DatePicker("结束时间", selection: $endDate)
+                                if !isValidRange {
+                                    WarningLine(text: "结束时间需要晚于开始时间。")
+                                }
+                            }
+                        }
+
+                        if let selectedMember {
+                            Panel {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Label("\(selectedMember.name)的课程安排表", systemImage: "calendar")
+                                            .font(.headline)
+                                            .foregroundColor(Theme.ink)
+                                            .lineLimit(2)
+                                        Spacer()
+                                        Text("\(affectedSessions.count) 节将取消")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundColor(Theme.teal)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(Capsule().fill(Theme.teal.opacity(0.12)))
+                                    }
+
+                                    if memberSessions.isEmpty {
+                                        EmptyBlock(systemImage: "calendar", title: "暂无可给假的课程", text: "只展示待上课课程，已完成、已取消、请假和爽约不会显示。")
+                                    } else {
+                                        ScrollView {
+                                            VStack(spacing: 10) {
+                                                ForEach(memberSessions) { session in
+                                                    MemberLeaveScheduleRow(
+                                                        session: session,
+                                                        isAffected: affectedSessions.contains { $0.id == session.id }
+                                                    )
+                                                }
+                                            }
+                                            .padding(8)
+                                        }
+                                        .frame(maxHeight: 260)
+                                        .roundedBackground(Color.white.opacity(0.54), radius: 18)
+                                    }
+                                }
+                            }
+                        }
+
+                        Panel {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("备注")
+                                    .font(.headline)
+                                MultilineTextView(text: $note)
+                                    .frame(minHeight: 82)
+                                    .padding(8)
+                                    .roundedBackground(Color.white.opacity(0.9), radius: 12)
+                            }
+                        }
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationBarTitle(Text("给会员假"), displayMode: .inline)
+            .navigationBarItems(
+                leading: Button("取消") {
+                    presentationMode.wrappedValue.dismiss()
+                },
+                trailing: Button("完成") {
+                    guard let selectedMemberID else { return }
+                    store.giveLeave(to: selectedMemberID, startDate: startDate, endDate: endDate, note: note)
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .disabled(!canSubmit)
+            )
+        }
+    }
+
+    private func updateStartDate(_ newStartDate: Date) {
+        startDate = newStartDate
+        endDate = defaultLeaveEndDate(after: newStartDate)
+    }
+}
+
+private struct MemberLeaveScheduleRow: View {
+    let session: CourseSession
+    let isAffected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: isAffected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(isAffected ? Theme.teal : Theme.line)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.date.weekdayDateText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Theme.ink)
+                Text("\(session.timeRangeText) · \(session.courseType)")
+                    .font(.caption)
+                    .foregroundColor(Theme.muted)
+            }
+            Spacer()
+            StatusPill(status: session.status)
+        }
+        .padding(12)
+        .roundedBackground(isAffected ? Theme.teal.opacity(0.10) : Color.white.opacity(0.72), radius: 16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isAffected ? Theme.teal.opacity(0.48) : Theme.line.opacity(0.7), lineWidth: 1)
+        )
     }
 }
 
@@ -636,6 +860,67 @@ private struct CoachLeaveHistoryRow: View {
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Theme.line.opacity(0.72), lineWidth: 1)
+        )
+    }
+}
+
+private struct MemberLeaveHistoryView: View {
+    let records: [MemberLeaveRecord]
+    let memberName: (UUID) -> String
+
+    var body: some View {
+        ZStack {
+            WarmBackground()
+            ScrollView {
+                VStack(spacing: 12) {
+                    if records.isEmpty {
+                        EmptyBlock(systemImage: "person.badge.clock", title: "暂无会员给假", text: "完成给会员假后，会员、起止时间和取消课程数会显示在这里。")
+                    } else {
+                        ForEach(records) { record in
+                            MemberLeaveHistoryRow(record: record, memberName: memberName(record.memberID))
+                        }
+                    }
+                }
+                .padding(18)
+            }
+        }
+        .navigationBarTitle(Text("会员记录"), displayMode: .inline)
+    }
+}
+
+private struct MemberLeaveHistoryRow: View {
+    let record: MemberLeaveRecord
+    let memberName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(memberName, systemImage: "person.badge.clock")
+                    .font(.headline)
+                    .foregroundColor(Theme.ink)
+                Spacer()
+                Text("\(record.affectedSessionIDs.count) 节已取消")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(Theme.teal)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Theme.teal.opacity(0.12)))
+            }
+            Text("\(record.startDate.dateTimeText) 至 \(record.endDate.dateTimeText)")
+                .font(.subheadline)
+                .foregroundColor(Theme.coffee)
+            if !record.note.isEmpty {
+                Text(record.note)
+                    .font(.caption)
+                    .foregroundColor(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .roundedBackground(Color.white.opacity(0.84), radius: 20)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Theme.teal.opacity(0.32), lineWidth: 1)
         )
     }
 }

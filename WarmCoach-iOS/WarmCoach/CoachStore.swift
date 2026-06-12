@@ -21,6 +21,10 @@ final class CoachStore: ObservableObject {
         didSet { save() }
     }
 
+    @Published var memberLeaveRecords: [MemberLeaveRecord] = [] {
+        didSet { save() }
+    }
+
     private let storageKey = "warmcoach.data.v1"
     private let courseTypesStorageKey = "warmcoach.courseTypes.v1"
 
@@ -90,7 +94,7 @@ final class CoachStore: ObservableObject {
         let normalizedStart = min(startDate, endDate)
         let normalizedEnd = max(startDate, endDate)
         let affectedSessions = sessions.filter {
-            $0.status.isVisibleInSchedule &&
+            $0.status == .upcoming &&
             $0.startsAt < normalizedEnd &&
             $0.endsAt > normalizedStart
         }
@@ -110,6 +114,41 @@ final class CoachStore: ObservableObject {
             affectedSessionIDs: affectedSessionIDs
         )
         leaveRecords.insert(record, at: 0)
+    }
+
+    @discardableResult
+    func giveLeave(to memberID: UUID, startDate: Date, endDate: Date, note: String) -> Int {
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedStart = min(startDate, endDate)
+        let normalizedEnd = max(startDate, endDate)
+        let affectedSessions = sessions.filter {
+            $0.memberID == memberID &&
+            $0.status == .upcoming &&
+            $0.startsAt < normalizedEnd &&
+            $0.endsAt > normalizedStart
+        }
+        let affectedSessionIDs = affectedSessions.map(\.id)
+
+        for session in affectedSessions {
+            var cancelledSession = session
+            cancelledSession.status = .cancelled
+            if !trimmedNote.isEmpty {
+                cancelledSession.note = session.note.isEmpty ? "给假：\(trimmedNote)" : "\(session.note)\n给假：\(trimmedNote)"
+            }
+            upsertSession(cancelledSession)
+        }
+
+        let record = MemberLeaveRecord(
+            id: UUID(),
+            memberID: memberID,
+            startDate: normalizedStart,
+            endDate: normalizedEnd,
+            note: trimmedNote,
+            affectedSessionIDs: affectedSessionIDs
+        )
+        memberLeaveRecords.insert(record, at: 0)
+
+        return affectedSessions.count
     }
 
     private func preparedForStorage(_ session: CourseSession, previous: CourseSession?) -> CourseSession {
@@ -183,10 +222,16 @@ final class CoachStore: ObservableObject {
         members = decoded.members
         sessions = decoded.sessions
         leaveRecords = decoded.leaveRecords
+        memberLeaveRecords = decoded.memberLeaveRecords
     }
 
     private func save() {
-        let payload = CoachData(members: members, sessions: sessions, leaveRecords: leaveRecords)
+        let payload = CoachData(
+            members: members,
+            sessions: sessions,
+            leaveRecords: leaveRecords,
+            memberLeaveRecords: memberLeaveRecords
+        )
         guard let data = try? JSONEncoder().encode(payload) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
     }

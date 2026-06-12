@@ -497,6 +497,7 @@ struct ProfileView: View {
     @State private var newCourseType = ""
     @State private var selectedDetail: ProfileDetail?
     @State private var showsLeaveRequest = false
+    @State private var showsMemberLeaveRequest = false
     @State private var showsLeaveHistory = false
 
     private var activeMembers: Int {
@@ -554,31 +555,41 @@ struct ProfileView: View {
                                     Text("请假休息")
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundColor(Theme.muted)
-                                    HStack(spacing: 10) {
-                                        Button {
-                                            showsLeaveRequest = true
-                                        } label: {
-                                            Label("我要请假", systemImage: "moon.zzz.fill")
-                                                .font(.subheadline.weight(.bold))
-                                                .foregroundColor(.white)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
-                                                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.apricotDark))
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-
-                                        Button {
-                                            showsLeaveHistory = true
-                                        } label: {
-                                            Label("休假记录", systemImage: "list.bullet.rectangle")
-                                                .font(.subheadline.weight(.bold))
-                                                .foregroundColor(Theme.coffee)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
-                                                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.coffee.opacity(0.12)))
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
+                                    Button {
+                                        showsLeaveRequest = true
+                                    } label: {
+                                        Label("我要请假", systemImage: "moon.zzz.fill")
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundColor(.white)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.apricotDark))
                                     }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    Button {
+                                        showsMemberLeaveRequest = true
+                                    } label: {
+                                        Label("给会员假", systemImage: "person.badge.clock")
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundColor(.white)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.teal))
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    Button {
+                                        showsLeaveHistory = true
+                                    } label: {
+                                        Label("休假记录", systemImage: "list.bullet.rectangle")
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundColor(Theme.coffee)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.coffee.opacity(0.12)))
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                                 VStack(alignment: .leading, spacing: 10) {
                                     Text("课程类型")
@@ -636,8 +647,16 @@ struct ProfileView: View {
                 CoachLeaveRequestView()
                     .environmentObject(store)
             }
+            .sheet(isPresented: $showsMemberLeaveRequest) {
+                MemberLeaveRequestView()
+                    .environmentObject(store)
+            }
             .sheet(isPresented: $showsLeaveHistory) {
-                CoachLeaveHistoryView(records: store.leaveRecords)
+                LeaveHistoryView(
+                    coachRecords: store.leaveRecords,
+                    memberRecords: store.memberLeaveRecords,
+                    memberName: { store.member(for: $0)?.name ?? "未知会员" }
+                )
             }
         }
     }

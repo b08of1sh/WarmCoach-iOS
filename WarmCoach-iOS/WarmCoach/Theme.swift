@@ -7,6 +7,7 @@ enum Theme {
     static let apricotDark = Color(red: 0.78, green: 0.43, blue: 0.18)
     static let coffee = Color(red: 0.56, green: 0.42, blue: 0.33)
     static let sage = Color(red: 0.48, green: 0.64, blue: 0.47)
+    static let teal = Color(red: 0.05, green: 0.56, blue: 0.58)
     static let softGreen = Color(red: 0.55, green: 0.71, blue: 0.55)
     static let rose = Color(red: 0.83, green: 0.39, blue: 0.35)
     static let ink = Color(red: 0.18, green: 0.16, blue: 0.14)
